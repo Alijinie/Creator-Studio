@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Typeset Motion Studio</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+<style>
+html,body{height:100%;background:#08090c}.font-display{font-family:Georgia,'Times New Roman',serif}.grid-bg{background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:40px 40px}.preview{background:#f3f0e8;color:#111}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.range{accent-color:#111}
+</style>
+</head>
+<body class="text-white">
+<div class="min-h-screen grid lg:grid-cols-[320px_1fr]">
+<aside class="border-r border-white/10 p-5 bg-[#0b0c10]">
+<div class="flex items-center justify-between mb-8"><div><div class="text-xs uppercase tracking-[.25em] text-white/40">HyperFrames</div><h1 class="font-semibold text-lg">Typeset Motion</h1></div><span class="w-2 h-2 rounded-full bg-emerald-400"></span></div>
+<label class="text-xs uppercase tracking-wider text-white/45">Your paragraph</label>
+<textarea id="text" class="mt-2 w-full h-52 rounded-xl bg-white/[.04] border border-white/10 p-3 text-sm leading-6 outline-none focus:border-white/30 resize-none" placeholder="Paste a paragraph…">Typography can turn ordinary language into motion. Every word arrives with intention, holds the frame, and gives way to the next idea.</textarea>
+<div class="mt-5 space-y-4">
+<div><div class="flex justify-between text-xs mb-2"><span>Words / beat</span><span id="wordsVal">4</span></div><input id="words" class="w-full range" type="range" min="2" max="8" value="4"></div>
+<div><div class="flex justify-between text-xs mb-2"><span>Seconds / beat</span><span id="paceVal">1.1</span></div><input id="pace" class="w-full range" type="range" min="0.5" max="2" step="0.1" value="1.1"></div>
+<div><div class="flex justify-between text-xs mb-2"><span>Font scale</span><span id="scaleVal">100%</span></div><input id="scale" class="w-full range" type="range" min="70" max="140" value="100"></div>
+</div>
+<div class="mt-6 grid grid-cols-2 gap-2"><button id="previewBtn" class="rounded-xl bg-white text-black py-2.5 text-sm font-medium">Preview</button><button id="renderBtn" class="rounded-xl border border-white/15 py-2.5 text-sm font-medium hover:bg-white/5">Render MP4</button></div>
+<button id="downloadBtn" disabled class="mt-2 w-full rounded-xl border border-emerald-400/30 text-emerald-300 py-2.5 text-sm disabled:opacity-30">Download MP4</button>
+<p id="status" class="mt-4 text-xs text-white/40 leading-5">Ready. Render uses browser WebCodecs when available; the generated composition is also HyperFrames-compatible.</p>
+</aside>
+<main class="min-w-0 grid-bg p-5 lg:p-8">
+<div class="max-w-6xl mx-auto h-full flex flex-col">
+<div class="flex items-end justify-between mb-5"><div><div class="text-xs uppercase tracking-[.2em] text-white/35">Dashboard</div><h2 class="text-2xl font-semibold mt-1">Kinetic paragraph generator</h2></div><div class="mono text-xs text-white/35" id="meta">1920 × 1080 · 30 fps</div></div>
+<div class="flex-1 min-h-[520px] rounded-2xl border border-white/10 bg-black/30 p-3 shadow-2xl"><div id="stage" class="preview relative w-full aspect-video overflow-hidden rounded-xl"></div></div>
+<div class="mt-4 flex justify-between items-center text-xs text-white/35"><span id="duration">0.0s</span><span>Typeset / editorial / monochrome</span></div>
+</div></main></div>
+<script type="module">
+import { Muxer, ArrayBufferTarget } from "https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.mjs";
+const $=id=>document.getElementById(id); let timeline, renderedBlob=null;
+function tokens(){return $('text').value.trim().replace(/\s+/g,' ').split(' ').filter(Boolean)}
+function build(){const words=tokens(), n=+$('words').value, pace=+$('pace').value, scale=+$('scale').value/100; const beats=[]; for(let i=0;i<words.length;i+=n) beats.push(words.slice(i,i+n).join(' ')); const total=Math.max(1,beats.length*pace); $('duration').textContent=total.toFixed(1)+'s'; $('stage').innerHTML=''; const wrap=document.createElement('div'); wrap.className='absolute inset-0 flex items-center justify-center p-[8%]'; $('stage').appendChild(wrap);
+beats.forEach((b,i)=>{const el=document.createElement('div'); el.className='absolute w-[84%] text-center font-display font-semibold leading-[.92] tracking-[-.035em] opacity-0'; el.style.fontSize=`${8*scale}vw`; el.textContent=b; wrap.appendChild(el)});
+if(timeline) timeline.kill(); timeline=gsap.timeline({paused:true}); [...wrap.children].forEach((el,i)=>{const t=i*pace; timeline.fromTo(el,{y:55,opacity:0,filter:'blur(10px)',scale:.97},{y:0,opacity:1,filter:'blur(0px)',scale:1,duration:.42,ease:'power3.out'},t); timeline.to(el,{y:-40,opacity:0,filter:'blur(7px)',duration:.32,ease:'power2.in'},t+pace-.35)}); $('meta').textContent=`1920 × 1080 · 30 fps · ${beats.length} beats`;
+return {beats,pace,total}; }
+function play(){build(); timeline.restart(); timeline.eventCallback('onComplete',()=>{});}
+['text','words','pace','scale'].forEach(id=>$(id).addEventListener('input',()=>{ if(id==='words')$('wordsVal').textContent=$(id).value;if(id==='pace')$('paceVal').textContent=$(id).value;if(id==='scale')$('scaleVal').textContent=$(id).value+'%'; build(); }));
+$('previewBtn').onclick=play;
+async function renderMP4(){
+ const cfg=build();
+ if(!('VideoEncoder' in window)){ $('status').textContent='MP4 rendering needs a browser with WebCodecs (Chrome/Edge recommended). Preview still works.'; return; }
+ $('renderBtn').disabled=true; $('downloadBtn').disabled=true; $('status').textContent='Rendering MP4…';
+ const canvas=document.createElement('canvas'); canvas.width=1920; canvas.height=1080; const ctx=canvas.getContext('2d');
+ const muxer=new Muxer({target:new ArrayBufferTarget(),video:{codec:'avc',width:1920,height:1080},fastStart:'in-memory'});
+ const encoder=new VideoEncoder({output:(chunk,metadata)=>muxer.addVideoChunk(chunk,metadata),error:e=>{throw e}});
+ try{encoder.configure({codec:'avc1.4d0033',width:1920,height:1080,bitrate:8_000_000,framerate:30});}
+ catch(e){$('status').textContent='This browser cannot configure H.264 WebCodecs. Use Chrome/Edge.';$('renderBtn').disabled=false;return;}
+ const frames=Math.ceil(cfg.total*30), beats=cfg.beats;
+ for(let f=0;f<frames;f++){
+   const t=f/30, beat=Math.min(beats.length-1,Math.floor(t/cfg.pace)), local=(t-beat*cfg.pace)/cfg.pace;
+   const alpha=local<.28?local/.28:local>.78?1-(local-.78)/.22:1;
+   const y=540+(local<.28?(1-local/.28)*55:local>.78?-((local-.78)/.22)*40:0);
+   ctx.fillStyle='#f3f0e8';ctx.fillRect(0,0,1920,1080);
+   ctx.fillStyle='#111';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='700 150px Georgia';ctx.globalAlpha=Math.max(0,Math.min(1,alpha));ctx.fillText(beats[beat],960,y,1650);ctx.globalAlpha=1;
+   const frame=new VideoFrame(canvas,{timestamp:Math.round(f*1_000_000/30)});
+   encoder.encode(frame,{keyFrame:f%60===0}); frame.close();
+ }
+ await encoder.flush(); encoder.close(); muxer.finalize();
+ renderedBlob=new Blob([muxer.target.buffer],{type:'video/mp4'});
+ $('downloadBtn').disabled=false; $('renderBtn').disabled=false; $('status').textContent=`Done — ${(renderedBlob.size/1024/1024).toFixed(1)} MB MP4 ready.`;
+}
+$('renderBtn').onclick=renderMP4; $('downloadBtn').onclick=()=>{if(!renderedBlob)return; const a=document.createElement('a');a.href=URL.createObjectURL(renderedBlob);a.download='typeset-motion.mp4';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
+build();
+</script></body></html>
